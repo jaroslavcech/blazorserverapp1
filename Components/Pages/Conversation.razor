@@ -1,0 +1,398 @@
+@page "/conversation"
+@rendermode InteractiveServer
+
+@using System.ComponentModel.DataAnnotations
+@using BlazorServerApp1.Services
+@inject Agent1 Agent
+@inject Agent2 AgentTwo
+@inject ChatDispatcher Dispatcher
+
+<PageTitle>Conversation</PageTitle>
+
+<h1>Conversation Setup</h1>
+
+<div class="row g-4 mb-4">
+    <div class="col-12 col-lg-6">
+        <div class="card border-primary shadow-sm h-100">
+            <div class="card-header bg-primary text-white fw-semibold">
+                Agent 1
+            </div>
+            <div class="card-body bg-light">
+                <EditForm Model="_formModel" OnValidSubmit="HandleSubmit" class="mb-4">
+                    <DataAnnotationsValidator />
+                    <ValidationSummary />
+                    <div class="mb-3">
+                        <label class="form-label" for="agent-name">Name</label>
+                        <InputText id="agent-name" class="form-control" @bind-Value="_formModel.Name" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="agent-role">Role</label>
+                        <InputText id="agent-role" class="form-control" @bind-Value="_formModel.Role" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="agent-model">Model</label>
+                        <InputSelect id="agent-model" class="form-select" @bind-Value="_formModel.Model">
+                            @foreach (var option in _modelOptions)
+                            {
+                                <option value="@option">@option</option>
+                            }
+                        </InputSelect>
+                    </div>
+                    <button type="submit" class="btn btn-primary" disabled="@_isSubmitting">
+                        Submit Name and Role
+                        @if (_showSuccess)
+                        {
+                            <span class="bi bi-check-circle-fill text-success ms-2" aria-hidden="true"></span>
+                        }
+                    </button>
+                </EditForm>
+
+                <div class="mb-0">
+                    <label class="form-label" for="agent-prompt">Prompt</label>
+                    <div class="input-group">
+                        <input id="agent-prompt" class="form-control" @bind="_prompt" placeholder="Ask Agent 1..." />
+                        <button class="btn btn-secondary" type="button" @onclick="SubmitPrompt" disabled="@_isPromptSubmitting">
+                            Submit prompt
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-6">
+        <div class="card border-danger shadow-sm h-100">
+            <div class="card-header bg-danger text-white fw-semibold">
+                Agent 2
+            </div>
+            <div class="card-body bg-light">
+                <EditForm Model="_agentTwoFormModel" OnValidSubmit="HandleSubmitAgentTwo" class="mb-4">
+                    <DataAnnotationsValidator />
+                    <ValidationSummary />
+                    <div class="mb-3">
+                        <label class="form-label" for="agent-two-name">Name</label>
+                        <InputText id="agent-two-name" class="form-control" @bind-Value="_agentTwoFormModel.Name" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="agent-two-role">Role</label>
+                        <InputText id="agent-two-role" class="form-control" @bind-Value="_agentTwoFormModel.Role" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="agent-two-model">Model</label>
+                        <InputSelect id="agent-two-model" class="form-select" @bind-Value="_agentTwoFormModel.Model">
+                            @foreach (var option in _modelOptions)
+                            {
+                                <option value="@option">@option</option>
+                            }
+                        </InputSelect>
+                    </div>
+                    <button type="submit" class="btn btn-danger" disabled="@_isSubmittingAgentTwo">
+                        Submit Name and Role
+                        @if (_showSuccessAgentTwo)
+                        {
+                            <span class="bi bi-check-circle-fill text-success ms-2" aria-hidden="true"></span>
+                        }
+                    </button>
+                </EditForm>
+
+                <div class="mb-0">
+                    <label class="form-label" for="agent-two-prompt">Prompt</label>
+                    <div class="input-group">
+                        <input id="agent-two-prompt" class="form-control" @bind="_promptAgentTwo" placeholder="Ask Agent 2..." />
+                        <button class="btn btn-secondary" type="button" @onclick="SubmitPromptAgentTwo" disabled="@_isPromptSubmittingAgentTwo">
+                            Submit prompt
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-12 col-md-6">
+        <div class="mb-3 mb-md-0">
+            <label class="form-label" for="iteration-count">Number of iterations</label>
+            <InputNumber TValue="int"
+                         id="iteration-count"
+                         class="form-control"
+                         @bind-Value="_iterationCount"
+                         min="3"
+                         max="100" />
+        </div>
+    </div>
+
+    <div class="col-12 col-md-6 d-flex align-items-end">
+        <div class="d-flex align-items-center gap-3">
+            <div class="form-check mb-0">
+                <InputCheckbox id="allow-dialogue"
+                               class="form-check-input"
+                               @bind-Value="_allowDialogue" />
+                <label class="form-check-label" for="allow-dialogue">Allow dialogue</label>
+            </div>
+            <button class="btn btn-outline-secondary"
+                    type="button"
+                    @onclick="StartConversationAsync"
+                    disabled="@_isConversationRunning">
+                Start conversation
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-12">
+        <label class="form-label" for="conversation-output">Agent Output</label>
+        <div id="conversation-output" class="form-control overflow-auto" style="height: 16rem;">
+            @if (_conversationEntries.Count == 0)
+            {
+                <span class="text-muted fst-italic">No response yet.</span>
+            }
+            else
+            {
+                @foreach (var entry in ConversationMarkup)
+                {
+                    <div class="mb-2">@entry</div>
+                }
+            }
+        </div>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div class="alert alert-danger mt-3" role="alert">
+        @_errorMessage
+    </div>
+}
+
+@code {
+    private readonly AgentFormModel _formModel = new AgentFormModel{
+        Name = "Elon Musk",
+        Role = "Jseš Elon Musk, CEO of SpaceX a Tesla. Máš hluboké znalosti o vesmírných technologiích, elektromobilech a udržitelné energii. Jsi vizionářský lídr s vášní pro inovace a technologický pokrok. Diskutuješ arogantním způsobem s Billem Gatesem, který zastává konzervativnější pohled na technologický vývoj a investice do udržitelné energie.",
+        Model = "gpt-4o-mini"
+    };
+    private readonly AgentFormModel _agentTwoFormModel = new AgentFormModel{
+        Name = "Bill Gates",
+        Role = "Jsi Bill Gates, zakladatel Microsoftu a filantrop. Máš hluboké znalosti o technologiích, podnikání a udržitelné energii. Diskutuješ s Elonem Muskem o budoucnosti technologií a jejich vlivu na společnost. Diskutuješ asertivně s Elonem Muskem o budoucnosti technologií a jejich vlivu na společnost.",
+        Model = "gpt-4o-mini"
+    };
+    private readonly List<string> _conversationEntries = new();
+    private bool _isSubmitting;
+    private bool _isSubmittingAgentTwo;
+    private bool _showSuccess;
+    private bool _showSuccessAgentTwo;
+    private string? _errorMessage;
+    private string _prompt = string.Empty;
+    private string _promptAgentTwo = string.Empty;
+    private bool _isPromptSubmitting;
+    private bool _isPromptSubmittingAgentTwo;
+    private int _iterationCount = 3;
+    private bool _allowDialogue = true;
+    private bool _isConversationRunning;
+    private readonly string[] _modelOptions = new[]
+    {
+        "gpt-4o-mini",
+        "gpt-4.1",
+        "gpt-4.1-mini",
+        "gpt-4o",
+        "gpt-4o-mini"
+    };
+    {
+        _errorMessage = null;
+        _showSuccess = false;
+        _isSubmitting = true;
+
+        try
+        {
+            Agent.RoleAndName(_formModel.Name!, _formModel.Role!, _formModel.Model!);
+            _showSuccess = true;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleSubmitAgentTwo()
+    {
+        _errorMessage = null;
+        _showSuccessAgentTwo = false;
+        _isSubmittingAgentTwo = true;
+
+        try
+        {
+            AgentTwo.RoleAndName(_agentTwoFormModel.Name!, _agentTwoFormModel.Role!, _agentTwoFormModel.Model!);
+            _showSuccessAgentTwo = true;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isSubmittingAgentTwo = false;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SubmitPrompt()
+    {
+        if (string.IsNullOrWhiteSpace(_prompt))
+        {
+            _errorMessage = "Prompt cannot be empty.";
+            return;
+        }
+
+        _errorMessage = null;
+        _isPromptSubmitting = true;
+
+        try
+        {
+            IReadOnlyList<string> responses;
+            if (_allowDialogue)
+            {
+                responses = await Dispatcher.ChatDispatch(_prompt, "agent1", _iterationCount);
+            }
+            else
+            {
+                var single = await Agent.Chat1(_prompt);
+                responses = new[] { single };
+            }
+
+            AppendConversation(responses);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isPromptSubmitting = false;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SubmitPromptAgentTwo()
+    {
+        if (string.IsNullOrWhiteSpace(_promptAgentTwo))
+        {
+            _errorMessage = "Prompt cannot be empty.";
+            return;
+        }
+
+        _errorMessage = null;
+        _isPromptSubmittingAgentTwo = true;
+
+        try
+        {
+            IReadOnlyList<string> responses;
+            if (_allowDialogue)
+            {
+                responses = await Dispatcher.ChatDispatch(_promptAgentTwo, "agent2", _iterationCount);
+            }
+            else
+            {
+                var single = await AgentTwo.Chat1(_promptAgentTwo);
+                responses = new[] { single };
+            }
+
+            AppendConversation(responses);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isPromptSubmittingAgentTwo = false;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task StartConversationAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_prompt))
+        {
+            _errorMessage = "Prompt cannot be empty.";
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        _errorMessage = null;
+        _isConversationRunning = true;
+
+        try
+        {
+            var responses = await Dispatcher.ChatDispatch(_prompt, "agent2", _iterationCount);
+            AppendConversation(responses);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isConversationRunning = false;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private IEnumerable<MarkupString> ConversationMarkup
+    {
+        get
+        {
+            foreach (var entry in _conversationEntries)
+            {
+                yield return new MarkupString(ConvertToMarkup(entry));
+            }
+        }
+    }
+
+    private void AppendConversation(IEnumerable<string> entries)
+    {
+        _conversationEntries.Clear();
+        _conversationEntries.AddRange(entries);
+    }
+
+    private static string ConvertToMarkup(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            return string.Empty;
+        }
+
+        var encoded = System.Net.WebUtility.HtmlEncode(input);
+        encoded = System.Text.RegularExpressions.Regex.Replace(
+            encoded,
+            @"\*\*(.+?)\*\*",
+            "<strong>$1</strong>",
+            System.Text.RegularExpressions.RegexOptions.Singleline);
+
+        return encoded
+            .Replace("\r\n", "<br />", StringComparison.Ordinal)
+            .Replace("\n", "<br />", StringComparison.Ordinal);
+    }
+
+    private sealed class AgentFormModel
+    {
+        [Required]
+        public string? Name { get; set; }
+
+        [Required]
+        public string? Role { get; set; }
+
+        [Required]
+        public string? Model { get; set; } = "gpt-4o-mini";
+    }
+}

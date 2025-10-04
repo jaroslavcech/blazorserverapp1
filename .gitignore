@@ -1,0 +1,24 @@
+# Build results
+bin/
+obj/
+out/
+
+# User-specific files
+*.user
+*.userosscache
+*.suo
+*.swp
+
+# VS Code
+.vscode/
+.history/
+
+# ASP.NET Core published output
+wwwroot/dist/
+wwwroot/lib/
+
+# Logs
+*.log
+
+# Sensitive config
+appsettings.Local.json
